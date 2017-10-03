@@ -1,4 +1,17 @@
 defmodule Csv do
+  def analyze_all(pathname) do
+    filenames = File.ls! pathname
+
+    filenames
+      |> Enum.filter(fn name -> 
+        (not String.contains?(name, "txt")) 
+        && String.contains?(name, "CSV")
+      end)
+      |> Enum.map(fn (item) -> 
+        filename = pathname <> "/" <> item
+        main(filename) 
+    end)
+  end
 
   def main(filename, start, length) do
     worker(filename, start, length)
@@ -34,8 +47,26 @@ defmodule Csv do
         #IO.inspect resultHexClk
         #IO.inspect resultHexDoubleClk 
 
-    resultToStore = Enum.join resultHexDoubleClk, ","
+    {finalResult, _, _} =
+      resultHexDoubleClk
+        |> Enum.reduce({[], [], 0}, &removeConsecutiveZero/2)
+
+    resultToStore =
+      finalResult 
+        |> Enum.join(",")
+
     File.write filename <> ".txt", resultToStore 
+  end
+
+  defp removeConsecutiveZero(item, {final, tempArr, zeroCount}) do
+    cond do
+      (item == "0x00") && (zeroCount >= (zero_threshold()/8 - 2)) ->
+        {final ++ ["\n\n\n"], [], 0}
+      (item == "0x00") ->
+        {final, tempArr ++ [item], zeroCount + 1}
+      true ->
+        {final ++ tempArr ++ [item], [], 0}
+    end
   end
 
   def toHexAccodingToClk(item, {final, num, count, pendingItem, acc, incValue, countMax}) do
@@ -49,8 +80,12 @@ defmodule Csv do
     newItem = pendingItem <> (numToHex newNum)
 
     cond do
+      item == invalid_value() ->
+        { final ++ ["\n\n"], 0, 0, "", acc, incValue, countMax }
+
       count < countMax ->
         { final, newNum, count + 1, pendingItem, acc, incValue, countMax }
+
       pendingItem == "" ->
         { final, 0, 0, "0x" <> newItem, acc, incValue, countMax }
       true ->
@@ -104,7 +139,7 @@ defmodule Csv do
         (decoding_start == false) && (data_value == 1) ->
           #IO.puts "Start decoding"
           {true, consecutive_zero_data}
-        consecutive_zero_data  >= 32 ->
+        consecutive_zero_data  >= zero_threshold() ->
           {false, 0}
         true ->
           {decoding_start, consecutive_zero_data}
@@ -123,6 +158,9 @@ defmodule Csv do
       #IO.inspect {final, new_decoding_start, clk_value, data_value, new_one_count, new_zero_count, new_clk_trigger, new_consecutive_zero_data}
 
     cond do
+      (decoding_start == true) && (new_decoding_start == false) ->
+        {final ++ [invalid_value()], new_decoding_start, 0, 0, 0, 0, false, 0}
+
       last_clk == clk_value ->
         {final, new_decoding_start, clk_value, data_value, new_one_count, new_zero_count, new_clk_trigger, new_consecutive_zero_data}
 
@@ -168,7 +206,11 @@ defmodule Csv do
     2
   end
 
-  def value_converter(data) do
+  defp zero_threshold() do
+    32
+  end
+
+  defp value_converter(data) do
     if data > 1.8 do
       1
     else
