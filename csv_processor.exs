@@ -11,6 +11,19 @@ defmodule Csv do
         filename = pathname <> "/" <> item
         main(filename) 
     end)
+
+    # merge all the files
+    analyzed_filenames = File.ls!
+
+    merged_result =
+      analyzed_filenames
+        |> Enum.filter(fn name ->
+          String.contains?(name, "txt")
+        end)
+        |> Enum.map(&File.read!/1)
+        |> Enum.reduce("", &<>/2)
+
+    File.write "merged.txt", merged_result  
   end
 
   def main(filename, start, length) do
@@ -18,7 +31,7 @@ defmodule Csv do
   end
 
   def main(filename) do
-    worker(filename, 10, 69000)
+    worker(filename, 10, 139990)
   end
 
   def worker(filename, start, length) do
@@ -26,7 +39,6 @@ defmodule Csv do
       File.read!(filename)
       |> String.splitter("\n", trim: true)
       |> Enum.drop(start)
-      #|> Enum.drop(35022)
       |> Enum.take(length)
       |> Enum.map(fn( item )-> 
                     [_ | [clk | [ data ] ] ] = String.split( item, "," )
@@ -55,13 +67,18 @@ defmodule Csv do
       finalResult 
         |> Enum.join(",")
 
-    File.write filename <> ".txt", resultToStore 
+    filenameNoPath =
+      filename
+        |> String.split("/")
+        |> Enum.at(-1)
+
+    File.write filenameNoPath  <> ".txt", resultToStore 
   end
 
   defp removeConsecutiveZero(item, {final, tempArr, zeroCount}) do
     cond do
       (item == "0x00") && (zeroCount >= (zero_threshold()/8 - 2)) ->
-        {final ++ ["\n\n\n"], [], 0}
+        {final ++ [""], [], 0}
       (item == "0x00") ->
         {final, tempArr ++ [item], zeroCount + 1}
       true ->
@@ -69,7 +86,7 @@ defmodule Csv do
     end
   end
 
-  def toHexAccodingToClk(item, {final, num, count, pendingItem, acc, incValue, countMax}) do
+  defp toHexAccodingToClk(item, {final, num, count, pendingItem, acc, incValue, countMax}) do
     newNum =
       if(item == 1) do
         num * acc + incValue
@@ -81,7 +98,7 @@ defmodule Csv do
 
     cond do
       item == invalid_value() ->
-        { final ++ ["\n\n"], 0, 0, "", acc, incValue, countMax }
+        { final ++ ["\n"], 0, 0, "", acc, incValue, countMax }
 
       count < countMax ->
         { final, newNum, count + 1, pendingItem, acc, incValue, countMax }
@@ -93,47 +110,10 @@ defmodule Csv do
     end
   end
 
-  defp numToHex (num) do
-    cond do
-      (num == 0) ->
-        "0"
-      (num == 1) ->
-        "1"
-      (num == 2) ->
-        "2"
-      (num == 3) ->
-        "3" 
-      (num == 4) ->
-        "4"
-      (num == 5) ->
-        "5"
-      (num == 6) ->
-        "6" 
-      (num == 7) ->
-        "7"
-      (num == 8) ->
-        "8"
-      (num == 9) ->
-        "9"
-      (num == 10) -> 
-        "A"
-      (num == 11) ->
-        "B"
-      (num == 12) ->
-        "C"
-      (num == 13) ->
-        "D"
-      (num == 14) ->
-        "E"
-      (num == 15) ->
-        "F"
-    end
-  end
-
 
   def toBinaryReducer({clk, data}, {final, decoding_start, last_clk, last_data, one_count, zero_count, clk_trigger, consecutive_zero_data}) do
-    clk_value = value_converter(clk)
-    data_value = value_converter(data)
+    clk_value = analogToDigital(clk)
+    data_value = analogToDigital(data)
     {new_decoding_start, new_consecutive_zero_data} =
       cond do
         (decoding_start == false) && (data_value == 1) ->
@@ -176,7 +156,7 @@ defmodule Csv do
 
   end
 
-  def calc_new_one_zero(one_count, zero_count, data_value, new_decoding_start, last_data) do
+  defp calc_new_one_zero(one_count, zero_count, data_value, new_decoding_start, last_data) do
     ones = one_count + data_value
     zeros = zero_count + 1 - data_value
 
@@ -210,7 +190,44 @@ defmodule Csv do
     32
   end
 
-  defp value_converter(data) do
+  defp numToHex (num) do
+    cond do
+      (num == 0) ->
+        "0"
+      (num == 1) ->
+        "1"
+      (num == 2) ->
+        "2"
+      (num == 3) ->
+        "3" 
+      (num == 4) ->
+        "4"
+      (num == 5) ->
+        "5"
+      (num == 6) ->
+        "6" 
+      (num == 7) ->
+        "7"
+      (num == 8) ->
+        "8"
+      (num == 9) ->
+        "9"
+      (num == 10) -> 
+        "A"
+      (num == 11) ->
+        "B"
+      (num == 12) ->
+        "C"
+      (num == 13) ->
+        "D"
+      (num == 14) ->
+        "E"
+      (num == 15) ->
+        "F"
+    end
+  end
+
+  defp analogToDigital(data) do
     if data > 1.8 do
       1
     else
